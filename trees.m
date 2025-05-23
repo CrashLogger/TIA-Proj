@@ -4,6 +4,8 @@ function trees
 load("Xtrain.mat")
 load("Ytrain.mat")
 
+% Se que es cualitativo y estoy usando MSE para los Cross-Validation.
+% No se que me estaba pasando en la cabeza. Lo arreglaré pronto :tm:.
 
 % Pese a que el archivo se llame [X/Y]train, voy a tratarlo como si fuera [X/Y] entero.
 
