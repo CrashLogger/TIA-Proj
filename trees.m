@@ -4,6 +4,8 @@ function trees
 load("Xtrain.mat")
 load("Ytrain.mat")
 
+close all;
+
 % Se que es cualitativo y estoy usando MSE para los Cross-Validation.
 % No se que me estaba pasando en la cabeza. Lo arreglaré pronto :tm:.
 
@@ -29,8 +31,9 @@ alpha_grid = tree.PruneAlpha;
 
 view(tree, "Mode", "graph");
 ypred = predict(tree, X(pos_test,:));
-MSE = mean((Y(pos_test)-ypred).^2)
-fprintf('RMSE del árbol de clasificación (nodos terminales=%d) = %4.2f \n\n',sum(~tree.IsBranchNode),sqrt(MSE));
+%MSE = mean((Y(pos_test)-ypred).^2)
+[SE_orig,SP_orig,ACC_orig,BAC_orig] = compute_metrics(ypred, Y(pos_test));
+fprintf('BAC del árbol de clasificación entero (nodos terminales=%d) = %4.2f \n\n',sum(~tree.IsBranchNode), BAC_orig);
 
 %% Cross-Validation
 %  Usamos K-Fold porque no hay motivo para no usarlo
@@ -59,34 +62,65 @@ for aa = 1:k
     for bb=1:length(alpha_grid)-1
         tree2 = prune(tree_train, "Alpha", alpha_grid(bb));
         ypred = predict(tree2,X_test);
-        CV_MSE(aa,bb) = mean((ypred-Y_test).^2);
+        [SE(aa,bb),SP(aa,bb),ACC(aa,bb),BAC(aa,bb)] = compute_metrics(ypred, Y_test);
     end
     
 end
-[val,pos] = min(mean(CV_MSE));
+figure();
+
+subplot(2, 2, 1);
+imagesc(SE);
+colorbar;
+xlabel("alpha");
+ylabel("k-folds");
+title('Sensitivity');
+
+subplot(2, 2, 2);
+imagesc(SP);
+colorbar;
+xlabel("alpha");
+ylabel("k-folds");
+title('Specificity');
+
+subplot(2, 2, 3);
+imagesc(BAC);
+colorbar;
+xlabel("alpha");
+ylabel("k-folds");
+title('Balanced Accuracy');
+
+subplot(2, 2, 4);
+imagesc(ACC);
+colorbar;
+xlabel("alpha");
+ylabel("k-folds");
+title('Accuracy');
+
+colormap("jet");
+
+[val,pos] = max(mean(BAC));
 tree_pruned = prune(tree, "Alpha", alpha_grid(pos));
 view(tree_pruned,'Mode','graph')
 
 %% Evaluación del arbol podado mediante K-Fold
 
-CV_RMSE = sqrt(CV_MSE);
 ypred = predict(tree_pruned, X(pos_test, :));
-MSE = mean((ypred-Y(pos_test)).^2);
+[SE_prune, SP_prune, BAC_prune, ACC_prune] = compute_metrics(ypred, Y(pos_test));
+fprintf('BAC del árbol de clasificación podado (nodos terminales=%d) = %4.2f \n\n',sum(~tree_pruned.IsBranchNode), BAC_prune);
 
-% Conseguimos un árbol mucho mas simple con las mismas capacidades de predicción que el arbol complejo original!
-fprintf('RMSE (TEST) del árbol podado (alpha=%.3f  nodos terminales=%d) = %4.2f \n\n',alpha_grid(pos),sum(~tree_pruned.IsBranchNode),sqrt(MSE));
 
 %% Usando bagging para reducir la varianza (Bootstrap Aggregation!)
 
-
+%{
+ 
 rng(4);
 mdl_bagged = TreeBagger(100, X(pos_train, :), Y(pos_train), "NumPredictorsToSample","all", "Method","classification");
 
 close all;
 
 ypred = predict(mdl_bagged, X(pos_test,:));
-MSE = mean((cell2mat(ypred)-Y(pos_test)).^2);
-fprintf('RMSE (TEST) del árbol bagged = %4.2f \n\n',sqrt(MSE));
+%MSE = mean((cell2mat(ypred)-Y(pos_test)).^2);
+%fprintf('RMSE (TEST) del árbol bagged = %4.2f \n\n',sqrt(MSE));
 
 %% Bagging Reduciendo la cantidad de predictores
 
@@ -96,8 +130,8 @@ mdl_RF = TreeBagger(100, X(pos_train, :), Y(pos_train), "NumPredictorsToSample",
 
 % Evaluamos rendimiento en test del árbol bagged 
 ypred = predict(mdl_RF,X(pos_test,:));
-MSE = mean((cell2mat(ypred)-Y(pos_test)).^2);
-fprintf('RMSE (TEST) del RF = %4.2f \n\n',sqrt(MSE));
+%MSE = mean((cell2mat(ypred)-Y(pos_test)).^2);
+%fprintf('RMSE (TEST) del RF = %4.2f \n\n',sqrt(MSE));
 
 %% Importancia de diferentes predictores y Out Of Box Error
 %%%%%%%%%%%%%%%%%% TODO: No entiendo que hace esto del todo aun %%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -123,3 +157,5 @@ ylabel('OOB RMSE');
 
 err = oobError(mdl_RF_OOB, "Mode", "Ensemble");
 fprintf('RMSE OOB del RF = %4.2f \n\n',sqrt(err));
+ 
+%}
