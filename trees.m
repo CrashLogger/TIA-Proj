@@ -110,18 +110,21 @@ fprintf('BAC del árbol de clasificación podado (nodos terminales=%d) = %4.2f \
 
 
 %% Usando bagging para reducir la varianza (Bootstrap Aggregation!)
-
-%{
  
 rng(4);
-mdl_bagged = TreeBagger(100, X(pos_train, :), Y(pos_train), "NumPredictorsToSample","all", "Method","classification");
+N = 100;
+tree_bagged = TreeBagger(N, X(pos_train, :), Y(pos_train), "NumPredictorsToSample","all", "Method","classification");
 
-close all;
+% Binarizamos a mano porque por algún motivo tree_bagged devuelve un cell array donde cada cell tiene un caracter
+tmp_ypred = predict(tree_bagged, X(pos_test,:));
+ypred = zeros(size(tmp_ypred));
+ypred(cell2mat(tmp_ypred) == '1') = 1;
 
-ypred = predict(mdl_bagged, X(pos_test,:));
-%MSE = mean((cell2mat(ypred)-Y(pos_test)).^2);
-%fprintf('RMSE (TEST) del árbol bagged = %4.2f \n\n',sqrt(MSE));
+[SE_bagging, SP_bagging, BAC_bagging, ACC_bagging] = compute_metrics(ypred, Y(pos_test));
+fprintf('BAC del árbol de clasificación de bagging (Numero de árboles=%d) = %4.2f \n\n',tree_bagged.NTrees, BAC_bagging);
 
+
+%{
 %% Bagging Reduciendo la cantidad de predictores
 
 rng(4);
