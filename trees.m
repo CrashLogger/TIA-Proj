@@ -1,6 +1,12 @@
 function trees
 %TREES para el proyecto
 
+%% PROBAR:
+% Hacer bagging y comprobar con OOB en lugar de las metricas de erik
+% Como es clasificación, es mejor hacerlo así:
+% - OOB hace su propio error
+% - No hace falta separar training y test!
+
 load("Xtrain.mat")
 load("Ytrain.mat")
 
