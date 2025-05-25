@@ -94,7 +94,7 @@ KS_grid = [1 2 3 4 5 6];
 CV_error = [];
 
 
-% Parallelize the outer loop
+
 for aa = 1:k
     pos_train_CV = c.training(aa);
     pos_test_CV = c.test(aa);
