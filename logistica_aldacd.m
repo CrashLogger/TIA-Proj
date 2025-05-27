@@ -33,85 +33,34 @@ label_logit = probs_logit > 0.5;
 % Evaluación
 [SE_logit, SP_logit, ACC_logit, BAC_logit] = compute_metrics(label_logit, y2);
 
-%% ===================== ÁRBOL DE CLASIFICACIÓN =====================
+%% ===================== ALD (Análisis Lineal Discriminante) =====================
 
-% Árbol inicial
-tree = fitctree(x1, y1, 'SplitCriterion', 'gdi');
+mdl_ald = fitcdiscr(x1, y1, 'DiscrimType', 'linear');
+label_ald = predict(mdl_ald, x2);
+[SE_ald, SP_ald, ACC_ald, BAC_ald] = compute_metrics(label_ald, y2);
 
-% Predecimos en test
-label_tree = predict(tree, x2);
-[SE_tree, SP_tree, ACC_tree, BAC_tree] = compute_metrics(label_tree, y2);
+%% ===================== ACD (Análisis Cuadrático Discriminante) =====================
 
-% Visualización inicial
-view(tree, 'Mode', 'graph');
-
-%% ===================== PODA CON VALIDACIÓN CRUZADA =====================
-
-alpha_grid = tree.PruneAlpha;
-rng(2);
-k = 10;
-c = cvpartition(length(y1), 'KFold', k);
-CV_error = [];
-
-for aa = 1:k
-    idx_tr = training(c, aa);
-    idx_te = test(c, aa);
-    
-    Xtr = x1(idx_tr,:);
-    Xte = x1(idx_te,:);
-    Ytr = y1(idx_tr);
-    Yte = y1(idx_te);
-
-    tree_cv = fitctree(Xtr, Ytr, 'SplitCriterion', 'gdi');
-
-    for bb = 1:length(alpha_grid)-1
-        podado = prune(tree_cv, 'Alpha', alpha_grid(bb));
-        pred = predict(podado, Xte);
-        CV_error(aa,bb) = 100 * (1 - sum(pred == Yte)/length(Yte));
-    end
-end
-
-% Selección del mejor alpha
-[~, pos] = min(mean(CV_error));
-alpha_opt = alpha_grid(pos);
-
-% Árbol podado definitivo
-tree_pruned = prune(tree, 'Alpha', alpha_opt);
-
-% Evaluar árbol podado
-label_pruned = predict(tree_pruned, x2);
-[SE_treeP, SP_treeP, ACC_treeP, BAC_treeP] = compute_metrics(label_pruned, y2);
-
-% Visualización árbol podado
-view(tree_pruned, 'Mode', 'graph');
+mdl_acd = fitcdiscr(x1, y1, 'DiscrimType', 'quadratic');
+label_acd = predict(mdl_acd, x2);
+[SE_acd, SP_acd, ACC_acd, BAC_acd] = compute_metrics(label_acd, y2);
 
 %% ===================== RESULTADOS =====================
 
 fprintf('\n>>> REGRESIÓN LOGÍSTICA <<<\n');
 fprintf('SE = %.4f | SP = %.4f | ACC = %.4f | BAC = %.4f\n', SE_logit, SP_logit, ACC_logit, BAC_logit);
 
-fprintf('\n>>> ÁRBOL DE CLASIFICACIÓN SIN PODAR <<<\n');
-fprintf('SE = %.4f | SP = %.4f | ACC = %.4f | BAC = %.4f\n', SE_tree, SP_tree, ACC_tree, BAC_tree);
+fprintf('\n>>> ALD (Discriminante Lineal) <<<\n');
+fprintf('SE = %.4f | SP = %.4f | ACC = %.4f | BAC = %.4f\n', SE_ald, SP_ald, ACC_ald, BAC_ald);
 
-fprintf('\n>>> ÁRBOL DE CLASIFICACIÓN PODADO <<<\n');
-fprintf('Alpha = %.4f | Nodos terminales = %d\n', alpha_opt, sum(~tree_pruned.IsBranchNode));
-fprintf('SE = %.4f | SP = %.4f | ACC = %.4f | BAC = %.4f\n', SE_treeP, SP_treeP, ACC_treeP, BAC_treeP);
+fprintf('\n>>> ACD (Discriminante Cuadrático) <<<\n');
+fprintf('SE = %.4f | SP = %.4f | ACC = %.4f | BAC = %.4f\n', SE_acd, SP_acd, ACC_acd, BAC_acd);
 
 %% ===================== CONFUSION CHARTS =====================
 
 figure;
-subplot(1,3,1); confusionchart(double(y2), double(label_logit)); title('Logística');
-subplot(1,3,2); confusionchart(double(y2), double(label_tree)); title('Árbol sin podar');
-subplot(1,3,3); confusionchart(double(y2), double(label_pruned)); title('Árbol podado');
+subplot(1,3,1); confusionchart(double(y2), double(label_logit)); title('Regresión Logística');
+subplot(1,3,2); confusionchart(double(y2), double(label_ald)); title('ALD');
+subplot(1,3,3); confusionchart(double(y2), double(label_acd)); title('ACD');
 pause; close;
 
-%% ===================== ERRORBAR PODA =====================
-figure;
-errorbar(alpha_grid(1:end-1), mean(CV_error), std(CV_error));
-hold on; plot(alpha_opt, mean(CV_error(:,pos)), 'ro');
-xlabel('Alpha'); ylabel('Error de validación cruzada (%)');
-title('Selección de α - Poda del árbol');
-grid on;
-pause; close;
-
-end
