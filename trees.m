@@ -20,11 +20,12 @@ close all;
 X = zscore(Xtrain);
 Y = Ytrain;
 
+
 % Después de ver esto:
-% https://media.discordapp.net/attachments/942077236524253215/1375869434438222014/image.png?ex=683341c3&is=6831f043&hm=9368f96cc8008f044d15d8776f060f9a7b1afed2ce9575906af792b450e1c691&=&format=webp&quality=lossless&width=1250&height=704
+% https://media.discordapp.net/attachments/942077236524253215/1375869434438222014/image.png?ex=68368d83&is=68353c03&hm=37a8f9611116e84c10e841d0c97ebc3f5840b3e8d0c5de45c1830fe15a48b659&=&format=webp&quality=lossless&width=1250&height=704
 % Podemos quitar sin ningún miramiento múltiples predictores
 
-size(X,2)
+size(X,2);
 
 useablePredictors = ones(size(X,2),1);
 %useablePredictors(9) = 0;
@@ -36,9 +37,14 @@ useablePredictors(37) = 0;
 %useablePredictors(43) = 0;
 useablePredictors(44) = 0;
 
-logicaluseablePredictors = logical(useablePredictors)
+logicaluseablePredictors = logical(useablePredictors);
 
 X = X(:,logicaluseablePredictors);
+
+
+[XClean, TF] = rmoutliers(X, "gesd");
+size(XClean)
+YClean = Y(~TF, :);
 
 
 %% Fijar una semilla para poder probar de manera consistente
@@ -66,7 +72,6 @@ for r = rngVals
     ypred = predict(tree, X(pos_test,:));
     %MSE = mean((Y(pos_test)-ypred).^2)
     [~,~,~,BAC_orig] = compute_metrics(ypred, Y(pos_test));
-    %fprintf('BAC del árbol de clasificación entero (nodos terminales=%d) = %4.6f \n\n',sum(~tree.IsBranchNode), BAC_orig);
     BAC_ENTEROS = [BAC_ENTEROS, BAC_orig];
 
     %% Cross-Validation
@@ -79,7 +84,8 @@ for r = rngVals
     X1 = X(pos_train,:);
     Y1 = Y(pos_train);
 
-    CV_MSE=[];
+    BAC = [];
+
     for aa = 1:k
         pos_train_CV = c.training(aa);
         pos_test_CV = c.test(aa);
@@ -96,7 +102,7 @@ for r = rngVals
         for bb=1:length(alpha_grid)-1
             tree2 = prune(tree_train, "Alpha", alpha_grid(bb));
             ypred = predict(tree2,X_test);
-            [SE(aa,bb),SP(aa,bb),ACC(aa,bb),BAC(aa,bb)] = compute_metrics(ypred, Y_test);
+            [~,~,~,BAC(aa,bb)] = compute_metrics(ypred, Y_test);
         end
         
     end
@@ -124,31 +130,31 @@ disp("======================================================================")
 
 %% Hacemos cross validation de Número de Árboles y menos predictores a la vez
 
-%{
+% Random forest, vaya!
+
 % ------------------------------------------------------------------------------------------------
 % NO LO HACEMOS TODAS LAS VECES, ES PERDER EL TIEMPO! LOS RESULTADOS ESTÁN EN treeResultsCV.csv
 % ------------------------------------------------------------------------------------------------
 
+%{
 parfor r = rngVals
 
     Xtrain_CV = X
     Ytrain_CV = Y
 
-    for nTrees = 10:10:120
+    for nTrees = 10:10:110
         for nPredict = 1:1:45
-            mdl_treebagger = TreeBagger(nTrees, Xtrain_CV, Ytrain_CV, "NumPredictorsToSample",numPredictorsToSample, "Method","classification", "OOBPredictorImportance","on");
+            mdl_treebagger = TreeBagger(nTrees, Xtrain_CV, Ytrain_CV, "NumPredictorsToSample",nPredict, "Method","classification", "OOBPredictorImportance","on");
             ooberroriter = oobError(mdl_treebagger);
-            fileID = fopen('treeResultsCV.csv','a+');
+            fileID = fopen('treeResultsCV-NO-OUTLIERS.csv','a+');
             fprintf(fileID, "%d,%d,%d,%4.6f\n", r, nTrees, nPredict, ooberroriter(end));
             fprintf("%d,%d,%d,%4.6f\n", r, nTrees, nPredict, ooberroriter(end));
             fclose(fileID);
         end
     end
 end
-
-% ------------------------------------------------------------------------------------------------
 %}
-
+% ------------------------------------------------------------------------------------------------
 
 %% Entrenamos arbol con la cantidad de arboles y predictores conseguida mediante CV
 %  Para ahorrar tiempo, tenemos los valores hard-codeados, obtenidos de una pasada de CV anterior
@@ -158,7 +164,7 @@ end
 numTrees = [100, 100, 100, 60, 70];
 numPredictors = [45, 44, 6, 39, 27];
 
-top5results = []
+top5results = [];
 
 for r = rngVals
     for idx = 1:1:5
@@ -175,21 +181,85 @@ for r = rngVals
     end
 end
 
-top5results
-
 [~, pos] = max(mean(top5results));
+pos = 2;
 
+rng(1)
 best_tree_bagged = TreeBagger(numTrees(pos), X(pos_train, :), Y(pos_train), "NumPredictorsToSample",numPredictors(pos), "Method","classification");
 
-rng(2025)
+
 % Binarizamos a mano porque por algún motivo tree_bagged devuelve un cell array donde cada cell tiene un caracter
 tmp_ypred = predict(best_tree_bagged, X(pos_test,:));
 ypred = zeros(size(tmp_ypred));
 ypred(cell2mat(tmp_ypred) == '1') = 1;
 [~, ~, ~, BAC_bagging] = compute_metrics(ypred, Y(pos_test));
 
-fprintf('%d,%d,%d,%4.6f\n',r, numTrees(pos), numPredictors(pos), BAC_bagging);
-top5results(r,idx) = BAC_bagging;
+C = confusionmat(Y(pos_test), ypred)
+SE = C(1,1) / (C(1,1) + C(2,1));
+SP = C(2,2) / (C(2,2) + C(1,2));
+BAC = (SE + SP)/2;
 
-%% FALTA:
-% Random forests!
+figure();
+confusionchart(C, {'Down (0)','Up (1)'});
+
+fprintf('%d,%d,%d,%4.6f\n',r, numTrees(pos), numPredictors(pos), BAC_bagging);
+%top5results(r,idx) = BAC_bagging;
+
+disp("CV-ING THE RESULT WITH MULTIPLE HOLD OUTS")
+
+given_BAC = [];
+
+%% CV just for a sanity check
+for ho = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7]
+    rng(1)
+    c = cvpartition(size(XClean,1),'holdout',ho);
+    pos_train_C = c.training;
+    pos_test_C = c.test;
+
+    rng(1)
+    given_tree_bagged = TreeBagger(numTrees(pos), XClean(pos_train_C, :), YClean(pos_train_C), "NumPredictorsToSample",numPredictors(pos), "Method","classification");
+
+    % Binarizamos a mano porque por algún motivo tree_bagged devuelve un cell array donde cada cell tiene un caracter
+    tmp_ypred = predict(given_tree_bagged, X(pos_test, :));
+    ypred = zeros(size(tmp_ypred));
+    ypred(cell2mat(tmp_ypred) == '1') = 1;
+   % [~, ~, ~, BAC_bagging] = compute_metrics(ypred, Y(pos_test));
+
+    C = confusionmat(Y(pos_test), ypred);
+    SE = C(1,1) / (C(1,1) + C(2,1));
+    SP = C(2,2) / (C(2,2) + C(1,2));
+    BAC = (SE + SP)/2;
+    given_BAC = [given_BAC BAC];
+
+    %figure();
+    %confusionchart(C, {'Down (0)','Up (1)'});
+
+    fprintf('%2.2f,%d,%d,%d,%4.6f\n',ho, 1, numTrees(pos), numPredictors(pos), BAC);
+end
+
+disp(mean(given_BAC))
+
+% %% Boosting
+
+fprintf("BOOSTING");
+
+
+rng(1)
+ho = 0.5
+c = cvpartition(size(XClean,1),'holdout',ho);
+pos_train_C = c.training;
+pos_test_C = c.test;
+
+treeTemplate = templateTree();
+boosted_tree = fitcensemble(XClean(pos_train_C, :), YClean(pos_train_C), 'Method','LogitBoost', 'Learners', treeTemplate, 'NumLearningCycles', 100);
+
+tmp_pred = predict(boosted_tree, X);
+ypred = zeros(size(tmp_ypred));
+ypred(cell2mat(tmp_ypred) == '1') = 1;
+
+C = confusionmat(Y(pos_test), ypred);
+SE = C(1,1) / (C(1,1) + C(2,1));
+SP = C(2,2) / (C(2,2) + C(1,2));
+BAC = (SE + SP)/2;
+
+fprintf('%2.2f,%4.6f\n',ho, BAC);
