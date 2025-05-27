@@ -16,7 +16,7 @@ logicaluseablePredictors = logical(useablePredictors);
 
 %Normalizar las entradas
 Xtrain = Xtrain(:,logicaluseablePredictors);
-for i=1:16
+for i=1:10
     
     rng(i);
     hpartition = cvpartition(length(Ytrain),'Holdout',0.40);
