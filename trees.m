@@ -28,6 +28,10 @@ Y = Ytrain;
 size(X,2);
 
 useablePredictors = ones(size(X,2),1);
+
+%{
+ useablePredictors(1) = 0;
+useablePredictors(8) = 0;
 useablePredictors(9) = 0;
 useablePredictors(18) = 0;
 useablePredictors(25) = 0;
@@ -35,13 +39,35 @@ useablePredictors(26) = 0;
 useablePredictors(35) = 0;
 useablePredictors(37) = 0;
 useablePredictors(43) = 0;
-useablePredictors(44) = 0;
+useablePredictors(44) = 0; 
+%}
+
+
+useablePredictors(2) = 0;
+useablePredictors(10) = 0;
+useablePredictors(30) = 0;
+
+useablePredictors(45) = 0; 
+useablePredictors(46) = 0;
+useablePredictors(47) = 0;
 
 logicaluseablePredictors = logical(useablePredictors);
 
 X = X(:,logicaluseablePredictors);
 
+fprintf("MATRIZ DE CORRELACIÓN:\n");
+correlmx = corrcoef(X)
 
+figure();
+imagesc(correlmx);
+colormap("jet")
+colorbar()
+
+numTrees = [100, 100, 100, 60, 70];
+numPredictors = [38, 31, 6, 35, 27];
+
+%{
+ 
 [XClean, TF] = rmoutliers(X, "gesd");
 size(XClean)
 YClean = Y(~TF, :);
@@ -68,7 +94,7 @@ for r = rngVals
 
     %% Evaluación del arbol inicial
 
-    %view(tree, "Mode", "graph");
+    view(tree, "Mode", "graph");
     ypred = predict(tree, X(pos_test,:));
     %MSE = mean((Y(pos_test)-ypred).^2)
     [~,~,~,BAC_orig] = compute_metrics(ypred, Y(pos_test));
@@ -162,8 +188,7 @@ end
 %  Los datos de esa pasada están en "treeResultsCV.csv"
 % Hacemos el top 5 de los conseguidos y comparamos
 
-numTrees = [100, 100, 100, 60, 70];
-numPredictors = [40, 31, 6, 35, 27];
+
 
 top5results = [];
 
@@ -264,26 +289,27 @@ SE = C(1,1) / (C(1,1) + C(2,1));
 SP = C(2,2) / (C(2,2) + C(1,2));
 BAC = (SE + SP)/2;
 
-fprintf('%2.2f,%4.6f\n',ho, BAC);
-
+fprintf('%2.2f,%4.6f\n',ho, BAC); 
+%}
 
 fprintf("# ===================================================================== #\n")
 fprintf("                        ------ FINAL ------\n")
 fprintf("# ===================================================================== #\n")
 
 rng(1)
-for pos_C = linspace(1, 5, 5)
-    parfor r = linspace(1,100,100)
+
+for pos_C = [3]%linspace(1, 5, 5)
+    parfor r = linspace(1,64,64)
         rng(r)
         ho = 0.4;
-        c = cvpartition(size(XClean,1),'holdout',ho);
+        c = cvpartition(size(X,1),'holdout',ho);
         pos_train_C = c.training;
         pos_test_C = c.test;
 
-        given_tree_bagged = TreeBagger(numTrees(pos_C), X(pos_train_C, :), Y(pos_train_C), "NumPredictorsToSample",numPredictors(pos_C), "Method","classification");
+        given_tree_bagged = TreeBagger(numTrees(pos_C), X(pos_train_C, predictorCount), Y(pos_train_C), "NumPredictorsToSample",numPredictors(pos_C), "Method","classification");
 
         % Binarizamos a mano porque por algún motivo tree_bagged devuelve un cell array donde cada cell tiene un caracter
-        tmp_ypred = predict(given_tree_bagged, X(pos_test_C, :));
+        tmp_ypred = predict(given_tree_bagged, X(pos_test_C, predictorCount));
         ypred = zeros(size(tmp_ypred));
         ypred(cell2mat(tmp_ypred) == '1') = 1;
         % [~, ~, ~, BAC_bagging] = compute_metrics(ypred, Y(pos_test));
@@ -292,11 +318,10 @@ for pos_C = linspace(1, 5, 5)
         SE = C(1,1) / (C(1,1) + C(2,1));
         SP = C(2,2) / (C(2,2) + C(1,2));
         BAC = (SE + SP)/2;
-        given_BAC = [given_BAC BAC];
 
-        fileID = fopen('final.csv','a+');
-        fprintf('%d,%d,%d,%4.6f\n', r, numTrees(pos_C), numPredictors(pos_C), BAC);
-        fprintf(fileID, '%d,%d,%d,%4.6f\n', r, numTrees(pos_C), numPredictors(pos_C), BAC);
+        fileID = fopen('final2.csv','a+');
+        fprintf('%d,%d,%d,%4.6f\n', r, numTrees(pos_C), predictorCount, BAC);
+        fprintf(fileID, '%d,%d,%d,%4.6f\n', r, numTrees(pos_C), predictorCount, BAC);
         fclose(fileID);
 
         %figure();
