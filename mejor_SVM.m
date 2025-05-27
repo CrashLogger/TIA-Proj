@@ -33,6 +33,7 @@ for i=1:10
     weights(y1 == 0) = (sum(y1 == 1)/sum(y1 == 0));  % Peso clase 0
     weights(y1 == 1) = 1;  % Peso clase 1
 
+    cost=[0,2;1,0];
     % Modelo con mejor C
     SVMModel = fitcsvm(x1, y1, "BoxConstraint", 0.8, ...
                       "KernelFunction", "linear",'weights',weights,"Cost",cost);
