@@ -44,96 +44,87 @@ X = X(:,logicaluseablePredictors);
 %% Fijar una semilla para poder probar de manera consistente
 %  Primero se hace un arbol de prueba tonto
 
-rng(1);
+BAC_ENTEROS = []
+BAC_PODADOS_KFOLD = []
 
-% 50/50 de train y test
-hpartition = cvpartition(size(X, 1), "HoldOut", 0.5);
-pos_train = hpartition.training;
-pos_test = hpartition.test;
+rngVals = linspace(1, 10, 10);
+for r = rngVals
 
-tree = fitctree(X(pos_train, :), Y(pos_train));
-alpha_grid = tree.PruneAlpha;
+    rng(r);
 
-%% Evaluación del arbol inicial
+    % 50/50 de train y test
+    hpartition = cvpartition(size(X, 1), "HoldOut", 0.5);
+    pos_train = hpartition.training;
+    pos_test = hpartition.test;
 
-view(tree, "Mode", "graph");
-ypred = predict(tree, X(pos_test,:));
-%MSE = mean((Y(pos_test)-ypred).^2)
-[SE_orig,SP_orig,ACC_orig,BAC_orig] = compute_metrics(ypred, Y(pos_test));
-fprintf('BAC del árbol de clasificación entero (nodos terminales=%d) = %4.6f \n\n',sum(~tree.IsBranchNode), BAC_orig);
+    tree = fitctree(X(pos_train, :), Y(pos_train));
+    alpha_grid = tree.PruneAlpha;
 
-%% Cross-Validation
-%  Usamos K-Fold porque no hay motivo para no usarlo
+    %% Evaluación del arbol inicial
 
-rng(1)
-k = 10;
-c = cvpartition(sum(pos_train),'KFold',k);
+    %view(tree, "Mode", "graph");
+    ypred = predict(tree, X(pos_test,:));
+    %MSE = mean((Y(pos_test)-ypred).^2)
+    [SE_orig,SP_orig,ACC_orig,BAC_orig] = compute_metrics(ypred, Y(pos_test));
+    fprintf('BAC del árbol de clasificación entero (nodos terminales=%d) = %4.6f \n\n',sum(~tree.IsBranchNode), BAC_orig);
+    BAC_ENTEROS = [BAC_ENTEROS, BAC_orig];
 
-X1 = X(pos_train,:);
-Y1 = Y(pos_train);
+    %% Cross-Validation
+    %  Usamos K-Fold porque no hay motivo para no usarlo
 
-CV_MSE=[];
-for aa = 1:k
-    pos_train_CV = c.training(aa);
-    pos_test_CV = c.test(aa);
-    
-    X_train = X1(pos_train_CV,:);
-    X_test = X1(pos_test_CV,:);
-    Y_train = Y1(pos_train_CV);
-    Y_test = Y1(pos_test_CV);
-    
-    % Entrenamos árbol
-    tree_train = fitctree(X_train, Y_train);
-    
-    % Para cada lambda, ajustamos y evaluamos
-    for bb=1:length(alpha_grid)-1
-        tree2 = prune(tree_train, "Alpha", alpha_grid(bb));
-        ypred = predict(tree2,X_test);
-        [SE(aa,bb),SP(aa,bb),ACC(aa,bb),BAC(aa,bb)] = compute_metrics(ypred, Y_test);
+    rng(r)
+    k = 10;
+    c = cvpartition(sum(pos_train),'KFold',k);
+
+    X1 = X(pos_train,:);
+    Y1 = Y(pos_train);
+
+    CV_MSE=[];
+    for aa = 1:k
+        pos_train_CV = c.training(aa);
+        pos_test_CV = c.test(aa);
+        
+        X_train = X1(pos_train_CV,:);
+        X_test = X1(pos_test_CV,:);
+        Y_train = Y1(pos_train_CV);
+        Y_test = Y1(pos_test_CV);
+        
+        % Entrenamos árbol
+        tree_train = fitctree(X_train, Y_train);
+        
+        % Para cada lambda, ajustamos y evaluamos
+        for bb=1:length(alpha_grid)-1
+            tree2 = prune(tree_train, "Alpha", alpha_grid(bb));
+            ypred = predict(tree2,X_test);
+            [SE(aa,bb),SP(aa,bb),ACC(aa,bb),BAC(aa,bb)] = compute_metrics(ypred, Y_test);
+        end
+        
     end
-    
+
+    [val,pos] = max(mean(BAC))
+    tree_pruned = prune(tree, "Alpha", alpha_grid(pos));
+    %view(tree_pruned,'Mode','graph')
+
+    %% Evaluación del arbol podado mediante K-Fold
+
+    ypred = predict(tree_pruned, X(pos_test, :));
+    [SE_prune, SP_prune, BAC_prune, ACC_prune] = compute_metrics(ypred, Y(pos_test));
+    fprintf('BAC del árbol de clasificación podado (nodos terminales=%d) = %4.6f \n\n',sum(~tree_pruned.IsBranchNode), BAC_prune);
+    BAC_PODADOS_KFOLD = [BAC_PODADOS_KFOLD BAC_prune];
 end
-figure();
 
-subplot(2, 2, 1);
-imagesc(SE);
-colorbar;
-xlabel("alpha");
-ylabel("k-folds");
-title('Sensitivity');
+disp("======================================================================")
+fprintf("Media BAC arboles enteros: %4.6f\n", mean(BAC_ENTEROS));
+disp("======================================================================")
+fprintf("Media BAC arboles podados: %4.6f\n", mean(BAC_PODADOS_KFOLD));
+disp("======================================================================")
 
-subplot(2, 2, 2);
-imagesc(SP);
-colorbar;
-xlabel("alpha");
-ylabel("k-folds");
-title('Specificity');
 
-subplot(2, 2, 3);
-imagesc(BAC);
-colorbar;
-xlabel("alpha");
-ylabel("k-folds");
-title('Balanced Accuracy');
 
-subplot(2, 2, 4);
-imagesc(ACC);
-colorbar;
-xlabel("alpha");
-ylabel("k-folds");
-title('Accuracy');
-
-colormap("jet");
-
-[val,pos] = max(mean(BAC));
-tree_pruned = prune(tree, "Alpha", alpha_grid(pos));
-view(tree_pruned,'Mode','graph')
-
-%% Evaluación del arbol podado mediante K-Fold
-
-ypred = predict(tree_pruned, X(pos_test, :));
-[SE_prune, SP_prune, BAC_prune, ACC_prune] = compute_metrics(ypred, Y(pos_test));
-fprintf('BAC del árbol de clasificación podado (nodos terminales=%d) = %4.6f \n\n',sum(~tree_pruned.IsBranchNode), BAC_prune);
+pause();
+disp("======================================================================")
+disp("======================================================================")
+disp("======================================================================")
 
 %% Usando bagging para reducir la varianza (Bootstrap Aggregation!)
  
@@ -158,59 +149,18 @@ ypred(cell2mat(tmp_ypred) == '1') = 1;
 [SE_bagging, SP_bagging, BAC_bagging, ACC_bagging] = compute_metrics(ypred, Y(pos_test));
 fprintf('BAC del árbol de clasificación de bagging (Numero de árboles=%d) = %4.6f \n\n',tree_bagged.NTrees, BAC_bagging);
 
-%% Haciendo CV con bagging para ajustar el número de arboles
-
-stepSize = 10;
-PossibleNTreess = 10 : stepSize : 200;
-BAC_CV_bagging = zeros(size(PossibleNTreess));
-
-hpartition = cvpartition(size(X1, 1), "HoldOut", 0.5);
-pos_train_CV = hpartition.training;
-pos_test_CV = hpartition.test;
-
-for nTrees = PossibleNTreess
-     
-    tree_bagged = TreeBagger(nTrees, X1(pos_train_CV,:), Y1(pos_train_CV), "NumPredictorsToSample","all", "Method","classification");
-
-    % Binarizamos a mano porque por algún motivo tree_bagged devuelve un cell array donde cada cell tiene un caracter
-    tmp_ypred = predict(tree_bagged, X1(pos_test_CV,:));
-    ypred = zeros(size(tmp_ypred));
-    ypred(cell2mat(tmp_ypred) == '1') = 1;
-
-    [~, ~, BAC_CV_bagging(nTrees/stepSize), ~] = compute_metrics(ypred, Y1(pos_test_CV));
-    %%% DEBUG %%% fprintf('BAC del árbol de clasificación de bagging (Numero de árboles=%d) = %4.6f \n\n',tree_bagged.NTrees, BAC_CV_bagging(nTrees/stepSize));
-end
-figure()
-stem((BAC_CV_bagging-mean(BAC_CV_bagging))/std(BAC_CV_bagging))
-xlabel("x10      Número de Árboles")
-title("Resultados de CV: BAC normalizada")
-
-% Entrenamos arbol con la cantidad de arboles conseguida mediante CV
-
-[val,pos] = max(BAC_CV_bagging);
-tree_bagged = TreeBagger(PossibleNTreess(pos), X(pos_train, :), Y(pos_train), "NumPredictorsToSample","all", "Method","classification");
-
-% Binarizamos a mano porque por algún motivo tree_bagged devuelve un cell array donde cada cell tiene un caracter
-tmp_ypred = predict(tree_bagged, X(pos_test,:));
-ypred = zeros(size(tmp_ypred));
-ypred(cell2mat(tmp_ypred) == '1') = 1;
-
-[SE_bagging, SP_bagging, BAC_bagging, ACC_bagging] = compute_metrics(ypred, Y(pos_test));
-fprintf('BAC del árbol de clasificación de bagging (Numero de árboles=%d) = %4.6f \n\n',tree_bagged.NTrees, BAC_bagging);
-
-
 %% Bagging, peror educiendo la cantidad de predictores
 rng(1);
 size(X,2)
 numPredictorsToSample = size(X,2)/3;
-mdl_RF = TreeBagger(100, X(pos_train, :), Y(pos_train), "NumPredictorsToSample",numPredictorsToSample, "Method","classification", "OOBPredictorImportance","on");
+mdl_treebagger = TreeBagger(100, X(pos_train, :), Y(pos_train), "NumPredictorsToSample",numPredictorsToSample, "Method","classification", "OOBPredictorImportance","on");
 
 % Evaluamos rendimiento en test del árbol bagged 
-tmp_ypred = predict(tree_bagged, X(pos_test,:));
+tmp_ypred = predict(mdl_treebagger, X(pos_test,:));
 ypred = zeros(size(tmp_ypred));
 ypred(cell2mat(tmp_ypred) == '1') = 1;
 
-imp = mdl_RF.OOBPermutedPredictorDeltaError;
+imp = mdl_treebagger.OOBPermutedPredictorDeltaError;
 
 figure;
 bar(imp);
@@ -219,40 +169,27 @@ xlabel('Predictores');
 h = gca;
 
 [SE_bagging, SP_bagging, BAC_bagging, ACC_bagging] = compute_metrics(ypred, Y(pos_test));
-fprintf('BAC del árbol de clasificación de bagging (Numero de árboles=%d, Numero de predictores=%d) = %4.6f \n\n',mdl_RF.NTrees, numPredictorsToSample, BAC_bagging);
+fprintf('BAC del árbol de clasificación de bagging (Numero de árboles=%d, Numero de predictores=%d) = %4.6f \n\n',mdl_treebagger.NTrees, numPredictorsToSample, BAC_bagging);
 
 %% Hacemos cross validation de Número de Árboles y menos predictores a la vez
 
-stepSize = 10;
-PossibleNTreess = 10 : stepSize : 200;
-BAC_CV_bagging = zeros(size(PossibleNTreess));
+parfor r = rngVals
 
-numPredictorsToSample = linspace(1,size(X,2),size(X,2))
+    Xtrain_CV = X
+    Ytrain_CV = Y
 
-hpartition = cvpartition(size(X1, 1), "HoldOut", 0.5);
-pos_train_CV = hpartition.training;
-pos_test_CV = hpartition.test;
-
-for nTrees = PossibleNTreess
-
-    for nPredictors = numPredictorsToSample
-        tree_bagged = TreeBagger(nTrees, X1(pos_train_CV,:), Y1(pos_train_CV), "NumPredictorsToSample",nPredictors, "Method","classification");
-
-        % Binarizamos a mano porque por algún motivo tree_bagged devuelve un cell array donde cada cell tiene un caracter
-        tmp_ypred = predict(tree_bagged, X1(pos_test_CV,:));
-        ypred = zeros(size(tmp_ypred));
-        ypred(cell2mat(tmp_ypred) == '1') = 1;
-
-        [~, ~, BAC_CV_bagging(nTrees/stepSize, nPredictors), ~] = compute_metrics(ypred, Y1(pos_test_CV));
-        %%% DEBUG %%% fprintf('BAC del árbol de clasificación de bagging (Numero de árboles=%d, Número de predictores=%d) = %4.6f \n\n',tree_bagged.NTrees, nPredictors, BAC_CV_bagging(nTrees/stepSize, nPredictors));
+    for nTrees = 10:10:120
+        for nPredict = 1:1:45
+            mdl_treebagger = TreeBagger(nTrees, Xtrain_CV, Ytrain_CV, "NumPredictorsToSample",numPredictorsToSample, "Method","classification", "OOBPredictorImportance","on");
+            ooberroriter = oobError(mdl_treebagger);
+            fileID = fopen('treeResultsCV.csv','a+');
+            fprintf(fileID, "%d,%d,%d,%4.6f\n", r, nTrees, nPredict, ooberroriter(end));
+            fprintf("%d,%d,%d,%4.6f\n", r, nTrees, nPredict, ooberroriter(end));
+            fclose(fileID);
+        end
     end
 end
-figure()
-imagesc(BAC_CV_bagging)
-colormap("jet")
-colorbar()
-ylabel("x10      Número de Árboles")
-xlabel("Número de Predictores")
+
 % Entrenamos arbol con la cantidad de arboles y predictores conseguida mediante CV
 
 max_val = max(BAC_CV_bagging(:))
