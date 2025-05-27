@@ -6,7 +6,7 @@ load Ytrain.mat
 X = zscore(Xtrain);
 Y = Ytrain;
 BAC_media = [];
-for i=1:10
+parfor i=1:10
     rng(i);
     [trainInd,valInd,testInd] = dividerand(length(Y),0.7,0.15,0.15);
     

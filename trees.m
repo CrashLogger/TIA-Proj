@@ -28,13 +28,13 @@ Y = Ytrain;
 size(X,2);
 
 useablePredictors = ones(size(X,2),1);
-%useablePredictors(9) = 0;
+useablePredictors(9) = 0;
 useablePredictors(18) = 0;
-%useablePredictors(25) = 0;
-%useablePredictors(26) = 0;
-%useablePredictors(35) = 0;
+useablePredictors(25) = 0;
+useablePredictors(26) = 0;
+useablePredictors(35) = 0;
 useablePredictors(37) = 0;
-%useablePredictors(43) = 0;
+useablePredictors(43) = 0;
 useablePredictors(44) = 0;
 
 logicaluseablePredictors = logical(useablePredictors);
@@ -152,8 +152,9 @@ parfor r = rngVals
             fclose(fileID);
         end
     end
-end
+end 
 %}
+
 % ------------------------------------------------------------------------------------------------
 
 %% Entrenamos arbol con la cantidad de arboles y predictores conseguida mediante CV
@@ -162,7 +163,7 @@ end
 % Hacemos el top 5 de los conseguidos y comparamos
 
 numTrees = [100, 100, 100, 60, 70];
-numPredictors = [45, 44, 6, 39, 27];
+numPredictors = [40, 31, 6, 35, 27];
 
 top5results = [];
 
@@ -234,7 +235,8 @@ for ho = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7]
     %figure();
     %confusionchart(C, {'Down (0)','Up (1)'});
 
-    fprintf('%2.2f,%d,%d,%d,%4.6f\n',ho, 1, numTrees(pos), numPredictors(pos), BAC);
+
+    
 end
 
 disp(mean(given_BAC))
@@ -263,3 +265,47 @@ SP = C(2,2) / (C(2,2) + C(1,2));
 BAC = (SE + SP)/2;
 
 fprintf('%2.2f,%4.6f\n',ho, BAC);
+
+
+fprintf("# ===================================================================== #\n")
+fprintf("                        ------ FINAL ------\n")
+fprintf("# ===================================================================== #\n")
+
+rng(1)
+for pos_C = linspace(1, 5, 5)
+    parfor r = linspace(1,100,100)
+        rng(r)
+        ho = 0.4;
+        c = cvpartition(size(XClean,1),'holdout',ho);
+        pos_train_C = c.training;
+        pos_test_C = c.test;
+
+        given_tree_bagged = TreeBagger(numTrees(pos_C), X(pos_train_C, :), Y(pos_train_C), "NumPredictorsToSample",numPredictors(pos_C), "Method","classification");
+
+        % Binarizamos a mano porque por algún motivo tree_bagged devuelve un cell array donde cada cell tiene un caracter
+        tmp_ypred = predict(given_tree_bagged, X(pos_test_C, :));
+        ypred = zeros(size(tmp_ypred));
+        ypred(cell2mat(tmp_ypred) == '1') = 1;
+        % [~, ~, ~, BAC_bagging] = compute_metrics(ypred, Y(pos_test));
+
+        C = confusionmat(Y(pos_test_C), ypred);
+        SE = C(1,1) / (C(1,1) + C(2,1));
+        SP = C(2,2) / (C(2,2) + C(1,2));
+        BAC = (SE + SP)/2;
+        given_BAC = [given_BAC BAC];
+
+        fileID = fopen('final.csv','a+');
+        fprintf('%d,%d,%d,%4.6f\n', r, numTrees(pos_C), numPredictors(pos_C), BAC);
+        fprintf(fileID, '%d,%d,%d,%4.6f\n', r, numTrees(pos_C), numPredictors(pos_C), BAC);
+        fclose(fileID);
+
+        %figure();
+        %confusionchart(C, {'Down (0)','Up (1)'});
+    end
+end
+
+%%%%%%
+%%MODELO PARA DEMO
+%%%%%%
+
+finalTree = TreeBagger(100, X, Y, "NumPredictorsToSample",6, "Method","classification");
